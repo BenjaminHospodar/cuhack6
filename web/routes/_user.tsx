@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { useSignOut } from "@gadgetinc/react";
-import { Home, LogOut, Menu, User } from "lucide-react";
+import { Home, LogOut, Menu, User, LayoutDashboard, Compass } from "lucide-react";
 import { useState } from "react";
 import {
   Link,
@@ -103,16 +103,28 @@ const SideBar = () => {
       </div>
       <nav className="flex-1 px-4 py-4 space-y-1">
         <Link
-          to="/signed-in"
+          to="/dashboard"
           className={`flex items-center px-4 py-2 text-sm rounded-md transition-colors
       ${
-        location.pathname === "/signed-in"
+        location.pathname === "/dashboard"
           ? "bg-accent text-accent-foreground"
           : "hover:bg-accent hover:text-accent-foreground"
       }`}
         >
-          <Home className="mr-3 h-4 w-4" />
-          Home
+          <LayoutDashboard className="mr-3 h-4 w-4" />
+          Dashboard
+        </Link>
+        <Link
+          to="/explore"
+          className={`flex items-center px-4 py-2 text-sm rounded-md transition-colors
+      ${
+        location.pathname === "/explore"
+          ? "bg-accent text-accent-foreground"
+          : "hover:bg-accent hover:text-accent-foreground"
+      }`}
+        >
+          <Compass className="mr-3 h-4 w-4" />
+          Explore
         </Link>
       </nav>
     </div>

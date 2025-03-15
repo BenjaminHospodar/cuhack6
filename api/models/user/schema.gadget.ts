@@ -54,16 +54,6 @@ export const schema: GadgetModel = {
       default: ["unauthenticated"],
       storageKey: "wddwNCLG-E5N",
     },
-    skillInterests: {
-      type: "hasManyThrough",
-      sibling: { model: "skill", relatedField: null },
-      join: {
-        model: "userSkillInterest",
-        belongsToSelfField: "user",
-        belongsToSiblingField: "skill",
-      },
-      storageKey: "gklL3C9kbWj4",
-    },
     skills: {
       type: "hasManyThrough",
       sibling: { model: "skill", relatedField: "users" },

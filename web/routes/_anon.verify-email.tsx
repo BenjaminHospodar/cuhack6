@@ -17,7 +17,7 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
   }
 };
 
-export default function ({ loaderData }: Route.ComponentProps) {
+export default function({ loaderData }: Route.ComponentProps) {
   const { gadgetConfig } = useOutletContext<RootOutletContext>();
   const { success, error } = loaderData;
 

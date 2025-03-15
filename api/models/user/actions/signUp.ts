@@ -2,9 +2,10 @@ import { applyParams, save, ActionOptions } from "gadget-server";
 
 // Powers the form in web/routes/sign-up.tsx
 
-export const run: ActionRun = async ({ params, record, logger, api, session }) => {
+export const run: ActionRun = async ({ params, record, logger, api, session, trigger }) => {
   // Applies new 'email' and 'password' to the user record and saves to database
   applyParams(params, record);
+  
   record.lastSignedIn = new Date();
   await save(record);
   if (record.emailVerified) {

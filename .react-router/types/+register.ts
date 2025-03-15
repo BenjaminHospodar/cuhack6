@@ -13,6 +13,7 @@ type Params = {
   "/verify-email": {};
   "/sign-in": {};
   "/sign-up": {};
+  "/dashboard": {};
   "/signed-in": {};
   "/explore": {};
   "/profile": {};
