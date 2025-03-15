@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { useAction, useActionForm, useFindMany } from "@gadgetinc/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useOutletContext } from "react-router";
 import { api } from "../api";
 import type { AuthOutletContext } from "./_user";
@@ -27,6 +28,7 @@ export default function () {
   const { user } = useOutletContext<AuthOutletContext>();
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isAddingNewSkill, setIsAddingNewSkill] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<string>("");
   const [proficiencyLevel, setProficiencyLevel] = useState<string>("Beginner");
 
@@ -63,6 +65,10 @@ export default function () {
 
   const [{ fetching: isCreating }, createUserSkill] = useAction(
     api.userSkill.create
+  );
+  
+  const [{ fetching: isCreatingSkill }, createSkill] = useAction(
+    api.skill.create
   );
 
   const hasName = user.firstName || user.lastName;
@@ -218,10 +224,25 @@ export default function () {
                 >
                   Add Skill
                 </Button>
+                <div className="mt-4 text-center">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setIsAddingNewSkill(true)}
+                  >
+                    Not seeing your skill? Add it
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="text-center py-4 text-muted-foreground">
-                No more skills available to add
+                <div>No more skills available to add</div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsAddingNewSkill(true)}
+                  className="mt-4"
+                >
+                  Not seeing your skill? Add it
+                </Button>
               </div>
             )}
           </CardContent>
@@ -232,6 +253,11 @@ export default function () {
       <ChangePasswordModal
         open={isChangingPassword}
         onClose={() => setIsChangingPassword(false)}
+      />
+      <AddSkillModal
+        open={isAddingNewSkill}
+        onClose={() => setIsAddingNewSkill(false)}
+        onSkillAdded={setSelectedSkill}
       />
     </div>
   );
@@ -272,6 +298,95 @@ const EditProfileModal = (props: { open: boolean; onClose: () => void }) => {
             </Button>
             <Button type="submit" disabled={isSubmitting}>
               Save
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const AddSkillModal = (props: { 
+  open: boolean; 
+  onClose: () => void;
+  onSkillAdded: (skillId: string) => void;
+}) => {
+  const { user } = useOutletContext<AuthOutletContext>();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [{ fetching: isCreatingSkill }, createSkill] = useAction(api.skill.create);
+  const [{ fetching: isAddingSkill }, createUserSkill] = useAction(api.userSkill.create);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    
+    try {
+      // First create the skill
+      const result = await createSkill({
+        name,
+        description,
+      });
+
+      if (result?.skill?.id) {
+        // Then add it to the user
+        await createUserSkill({
+          proficiencyLevel: "Beginner", // Default to beginner
+          skill: {
+            _link: result.skill.id,
+          },
+          user: {
+            _link: user.id,
+          },
+        });
+
+        toast.success("Skill added successfully!");
+        setName("");
+        setDescription("");
+        props.onClose();
+      }
+    } catch (error) {
+      toast.error("Failed to add skill. Please try again.");
+      console.error(error);
+    }
+  };
+
+  return (
+    <Dialog open={props.open} onOpenChange={props.onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add New Skill</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="skillName">Skill Name</Label>
+              <Input 
+                id="skillName" 
+                placeholder="e.g., JavaScript, Project Management" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="skillDescription">Description (optional)</Label>
+              <Input 
+                id="skillDescription" 
+                placeholder="Brief description of this skill" 
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={props.onClose} type="button">
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={!name.trim() || isCreatingSkill || isAddingSkill}
+            >
+              {isCreatingSkill || isAddingSkill ? "Adding..." : "Add Skill"}
             </Button>
           </div>
         </form>

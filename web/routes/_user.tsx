@@ -38,7 +38,7 @@ export type AuthOutletContext = RootOutletContext & {
   user?: any;
 };
 
-const UserMenu = ({ user }: { user: any }) => {
+const UserMenu = ({ user }: { user: any; }) => {
   const [userMenuActive, setUserMenuActive] = useState(false);
   const signOut = useSignOut();
 
@@ -95,9 +95,10 @@ const SideBar = () => {
       <div className="h-16 flex items-center px-6 border-b">
         <Link to="/" className="flex items-center">
           <img
-            src="/api/assets/autologo?background=dark"
+            //src="/api/assets/autologo?background=dark"
+            src="/web/public/skill.png"
             alt="App name"
-            className="h-8 w-auto"
+            className="h-12 w-auto"
           />
         </Link>
       </div>
@@ -105,11 +106,10 @@ const SideBar = () => {
         <Link
           to="/dashboard"
           className={`flex items-center px-4 py-2 text-sm rounded-md transition-colors
-      ${
-        location.pathname === "/dashboard"
-          ? "bg-accent text-accent-foreground"
-          : "hover:bg-accent hover:text-accent-foreground"
-      }`}
+      ${location.pathname === "/dashboard"
+              ? "bg-accent text-accent-foreground"
+              : "hover:bg-accent hover:text-accent-foreground"
+            }`}
         >
           <LayoutDashboard className="mr-3 h-4 w-4" />
           Dashboard
@@ -117,11 +117,10 @@ const SideBar = () => {
         <Link
           to="/explore"
           className={`flex items-center px-4 py-2 text-sm rounded-md transition-colors
-      ${
-        location.pathname === "/explore"
-          ? "bg-accent text-accent-foreground"
-          : "hover:bg-accent hover:text-accent-foreground"
-      }`}
+      ${location.pathname === "/explore"
+              ? "bg-accent text-accent-foreground"
+              : "hover:bg-accent hover:text-accent-foreground"
+            }`}
         >
           <Compass className="mr-3 h-4 w-4" />
           Explore
@@ -145,9 +144,8 @@ const SideBarMenuButtonDrawer = () => {
         <Menu className="h-6 w-6" />
       </button>
       <div
-        className={`fixed inset-y-0 left-0 w-64 transform transition-transform duration-200 ease-in-out ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        } bg-background shadow-lg z-20`}
+        className={`fixed inset-y-0 left-0 w-64 transform transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full"
+          } bg-background shadow-lg z-20`}
       >
         <SideBar />
       </div>
@@ -163,7 +161,7 @@ const SideBarMenuButtonDrawer = () => {
   );
 };
 
-export default function ({ loaderData }: Route.ComponentProps) {
+export default function({ loaderData }: Route.ComponentProps) {
   const user = "user" in loaderData ? loaderData.user : undefined;
   const rootOutletContext = useOutletContext<RootOutletContext>();
 

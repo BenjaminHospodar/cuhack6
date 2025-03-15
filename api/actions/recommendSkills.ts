@@ -1,10 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { ActionOptions } from "gadget-server";
 
 export const params = {
   userId: { type: "string" }
 };
 
-export const run: ActionRun = async ({ params, logger, api, config }) => {
+export const run: ActionRun = async ({ params, logger, api, config, signal }) => {
   // Define fallback recommendations to use if anything goes wrong
   const defaultRecommendations = [
     {
@@ -42,8 +43,26 @@ export const run: ActionRun = async ({ params, logger, api, config }) => {
     };
   }
 
+  // Validate Gemini API key
+  if (!config.GEMINI_API_KEY) {
+    logger.error("Missing Gemini API key in configuration");
+    return {
+      recommendations: defaultRecommendations, 
+      source: "default-missing-api-key"
+    };
+  }
+
+  if (typeof config.GEMINI_API_KEY !== 'string' || !config.GEMINI_API_KEY.startsWith('AI')) {
+    logger.error("Invalid Gemini API key format");
+    return {
+      recommendations: defaultRecommendations,
+      source: "default-invalid-api-key"
+    };
+  }
+
   try {
     // Fetch the user's existing skills from the database
+    const startTime = Date.now();
     logger.info("Fetching user skills", { userId: params.userId });
     const userSkills = await api.userSkill.findMany({
       filter: {
@@ -57,6 +76,10 @@ export const run: ActionRun = async ({ params, logger, api, config }) => {
         },
         proficiencyLevel: true
       }
+    });
+    logger.debug("User skills fetch completed", { 
+      duration: `${Date.now() - startTime}ms`, 
+      count: userSkills.length 
     });
 
     logger.info("Found user skills", { count: userSkills.length, userId: params.userId });
@@ -79,93 +102,224 @@ export const run: ActionRun = async ({ params, logger, api, config }) => {
     // Initialize the Gemini API client
     logger.debug("Initializing Gemini API client");
     const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-pro-latest",
+      // Set safety settings if needed
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        }
+      ]
+    });
 
-    // Create the prompt for skill recommendations
+    // Create a more specific prompt for skill recommendations
     const prompt = `
       Based on the following skills a user has, suggest 5 new skills they should learn next.
       
       User's current skills:
       ${JSON.stringify(formattedSkills, null, 2)}
       
-      Please provide a JSON array of objects with the following structure:
+      Important instructions:
+      1. Recommend 5 skills that complement but don't overlap with their existing skills
+      2. Each skill should build on their current knowledge or open new career opportunities
+      3. Provide recommendations that match their current skill level
+      4. Be specific and practical with your recommendations
+      
+      Response requirements:
+      - You MUST return ONLY a valid JSON array with no explanations or text before or after
+      - Use this EXACT format with no variations:
       [
         {
           "name": "Skill Name",
-          "description": "Brief description of the skill",
-          "reason": "Why this skill complements their existing skillset"
+          "description": "Brief description of the skill (15-25 words)",
+          "reason": "Why this skill complements their existing skillset (15-25 words)"
         }
       ]
       
-      Return ONLY the JSON array, with no additional text.
+      Ensure the JSON is properly formatted with double quotes around property names and string values.
     `;
 
-    try {
-      // Generate recommendations with Gemini
-      logger.info("Calling Gemini API for recommendations");
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
-      
-      logger.debug("Received raw response from Gemini", { responseLength: text.length });
+    // Implement retry logic for Gemini API calls
+    const maxRetries = 3;
+    let retryCount = 0;
+    let recommendations;
+    let lastError = null;
 
-      // Extract and parse the JSON array from the response more robustly
-      let recommendations;
-      
-      // First, try to parse the entire response as JSON
+    while (retryCount < maxRetries) {
       try {
-        recommendations = JSON.parse(text);
-        logger.info("Successfully parsed complete response as JSON");
-      } catch (directParseError) {
-        logger.debug("Could not parse entire response as JSON, trying to extract JSON array", { 
-          error: directParseError.message 
+        // Generate recommendations with Gemini
+        logger.info("Calling Gemini API for recommendations", { 
+          attempt: retryCount + 1,
+          maxRetries 
         });
         
-        // If that fails, try to extract a JSON array using regex
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          try {
-            recommendations = JSON.parse(jsonMatch[0]);
-            logger.info("Successfully extracted and parsed JSON array from response");
-          } catch (extractParseError) {
-            logger.error("Failed to parse extracted JSON array", { 
-              error: extractParseError.message,
-              extractedText: jsonMatch[0].substring(0, 100) + "..." 
-            });
-            throw new Error("Invalid JSON format in extracted array");
+        const apiCallStart = Date.now();
+        
+        // Use AbortSignal for timeout control
+        const result = await model.generateContent({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.4,  // Lower temperature for more consistent, formatted results
+            topP: 0.8,
+            topK: 40,
           }
-        } else {
-          logger.error("Failed to find JSON array in response", { 
-            responseSample: text.substring(0, 100) + "..." 
+        }, { signal });
+        
+        const apiCallDuration = Date.now() - apiCallStart;
+        logger.debug("Gemini API call completed", { duration: `${apiCallDuration}ms` });
+        
+        const response = result.response;
+        const text = response.text();
+        
+        logger.debug("Received raw response from Gemini", { 
+          responseLength: text.length,
+          responseSample: text.substring(0, 200) + (text.length > 200 ? "..." : "")
+        });
+
+        // Extract and parse the JSON array from the response more robustly
+        try {
+          recommendations = JSON.parse(text);
+          logger.info("Successfully parsed complete response as JSON");
+        } catch (directParseError) {
+          logger.debug("Could not parse entire response as JSON, trying to extract JSON array", { 
+            error: directParseError.message,
+            rawResponse: text.length > 1000 ? text.substring(0, 1000) + "..." : text
           });
-          throw new Error("No JSON array found in response");
+          
+          // Try multiple regex patterns to extract JSON
+          const jsonPatterns = [
+            /\[\s*\{[\s\S]*\}\s*\]/,      // Standard array of objects
+            /\[\s*\{[\s\S]*\}\s*,?\s*\]/,  // Handle trailing comma
+            /\{[\s\S]*"name"[\s\S]*\}/     // Try to find at least one object
+          ];
+          
+          let extractedJson = null;
+          for (const pattern of jsonPatterns) {
+            const match = text.match(pattern);
+            if (match) {
+              extractedJson = match[0];
+              logger.debug("Found potential JSON with pattern", { 
+                pattern: pattern.toString(),
+                extractedMatch: extractedJson.substring(0, 100) + "..." 
+              });
+              break;
+            }
+          }
+          
+          if (extractedJson) {
+            try {
+              // Try to fix common JSON formatting issues
+              const cleanedJson = extractedJson
+                .replace(/,(\s*[\]}])/g, '$1')  // Remove trailing commas
+                .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":'); // Ensure property names are quoted
+                
+              recommendations = JSON.parse(cleanedJson);
+              logger.info("Successfully extracted and parsed JSON array from response");
+            } catch (extractParseError) {
+              logger.error("Failed to parse extracted JSON array", { 
+                error: extractParseError.message,
+                extractedText: extractedJson.substring(0, 200) + "..." 
+              });
+              throw new Error(`Invalid JSON format in extracted array: ${extractParseError.message}`);
+            }
+          } else {
+            logger.error("Failed to find JSON array in response", { 
+              responseSample: text.substring(0, 300) + "..." 
+            });
+            throw new Error("No JSON array found in response");
+          }
+        }
+        
+        // Validate that we got an array of recommendation objects with required properties
+        if (!Array.isArray(recommendations)) {
+          logger.error("Parsed result is not an array", { type: typeof recommendations });
+          throw new Error("Expected array of recommendations");
+        }
+        
+        // Validate each recommendation has the required properties
+        const validRecommendations = recommendations.filter(rec => {
+          return rec && 
+                 typeof rec === 'object' && 
+                 typeof rec.name === 'string' && 
+                 typeof rec.description === 'string' && 
+                 typeof rec.reason === 'string';
+        });
+        
+        if (validRecommendations.length === 0) {
+          logger.error("No valid recommendations in response", { 
+            originalCount: recommendations.length
+          });
+          throw new Error("No valid recommendations found");
+        }
+        
+        if (validRecommendations.length < recommendations.length) {
+          logger.warn("Some recommendations were invalid and filtered out", {
+            originalCount: recommendations.length,
+            validCount: validRecommendations.length
+          });
+          recommendations = validRecommendations;
+        }
+        
+        // Limit to 5 recommendations
+        if (recommendations.length > 5) {
+          logger.info("Limiting recommendations to 5", { 
+            originalCount: recommendations.length 
+          });
+          recommendations = recommendations.slice(0, 5);
+        }
+        
+        // Success! Break out of the retry loop
+        logger.info("Successfully generated recommendations", { 
+          count: recommendations.length,
+          totalApiTime: `${apiCallDuration}ms`,
+          retries: retryCount
+        });
+        
+        return { 
+          recommendations,
+          source: "gemini",
+          metadata: {
+            retries: retryCount,
+            processingTime: apiCallDuration
+          }
+        };
+      } catch (aiError) {
+        lastError = aiError;
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff for retries
+          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 10000);
+          logger.warn(`Gemini API call failed, retrying in ${backoffMs}ms`, { 
+            error: aiError.message, 
+            attempt: retryCount,
+            maxRetries
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        } else {
+          logger.error("All Gemini API retry attempts failed", { 
+            error: aiError.message,
+            stack: aiError.stack,
+            totalAttempts: retryCount
+          });
         }
       }
-      
-      // Validate that we got an array of recommendation objects
-      if (!Array.isArray(recommendations)) {
-        logger.error("Parsed result is not an array", { type: typeof recommendations });
-        throw new Error("Expected array of recommendations");
-      }
-      
-      logger.info("Successfully generated recommendations", { count: recommendations.length });
-      return { 
-        recommendations,
-        source: "gemini" 
-      };
-    } catch (aiError) {
-      logger.error("Error with Gemini API", { 
-        error: aiError.message,
-        stack: aiError.stack
-      });
-      
-      // Return default recommendations instead of failing
-      logger.info("Falling back to default recommendations");
-      return { 
-        recommendations: defaultRecommendations,
-        source: "default-ai-error" 
-      };
     }
+    
+    // If we get here, all retries failed
+    logger.error("Failed to get recommendations after all retries", {
+      error: lastError?.message,
+      userId: params.userId
+    });
+    
+    // Return default recommendations instead of failing
+    return { 
+      recommendations: defaultRecommendations,
+      source: "default-after-retries",
+      error: lastError?.message
+    };
   } catch (error) {
     // Catch any other errors in the overall process
     logger.error("Unexpected error in recommendSkills action", { 
@@ -177,7 +331,12 @@ export const run: ActionRun = async ({ params, logger, api, config }) => {
     // Always return something useful rather than throwing
     return { 
       recommendations: defaultRecommendations,
-      source: "default-unexpected-error" 
+      source: "default-unexpected-error",
+      error: error.message
     };
   }
+};
+
+export const options: ActionOptions = {
+  timeoutMS: 30000  // 30 seconds timeout
 };
