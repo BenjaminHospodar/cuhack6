@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SkillIssue - Skill Swap Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 text-gray-900">
+    <header class="bg-blue-600 text-white text-center py-6">
+      <h1 class="text-4xl font-bold">SkillIssue</h1>
+      <p class="text-lg">Swap skills. Learn something new.</p>
+    </header>
+
+    <nav class="bg-white shadow-md py-4">
+      <ul class="flex justify-center space-x-6">
+        <li>
+          <a href="#about" class="text-blue-600 hover:underline">About</a>
+        </li>
+        <li>
+          <a href="#how-it-works" class="text-blue-600 hover:underline"
+            >How It Works</a
+          >
+        </li>
+        <li>
+          <a href="#find-swap" class="text-blue-600 hover:underline"
+            >Find a Swap</a
+          >
+        </li>
+        <li>
+          <a href="#contact" class="text-blue-600 hover:underline">Contact</a>
+        </li>
+      </ul>
+    </nav>
+
+    <section
+      id="about"
+      class="max-w-3xl mx-auto my-10 p-6 bg-white shadow-md rounded-lg"
+    >
+      <h2 class="text-2xl font-semibold mb-4">About SkillIssue</h2>
+      <p>
+        Connect with people who have the skills you want and teach the skills
+        you have. A fair exchange for growth.
+      </p>
+    </section>
+
+    <section
+      id="how-it-works"
+      class="max-w-3xl mx-auto my-10 p-6 bg-white shadow-md rounded-lg"
+    >
+      <h2 class="text-2xl font-semibold mb-4">How It Works</h2>
+      <ol class="list-decimal list-inside space-y-2">
+        <li>
+          Create a profile listing the skills you offer and the skills you want.
+        </li>
+        <li>
+          Find matches and connect with people who complement your skill set.
+        </li>
+        <li>Exchange knowledge and improve together.</li>
+      </ol>
+    </section>
+
+    <section
+      id="find-swap"
+      class="max-w-3xl mx-auto my-10 p-6 bg-white shadow-md rounded-lg"
+    >
+      <h2 class="text-2xl font-semibold mb-4">Find a Skill Swap</h2>
+      <form class="space-y-4">
+        <div>
+          <label for="skill-you-have" class="block text-lg font-medium"
+            >Skill You Have:</label
+          >
+          <input
+            type="text"
+            id="skill-you-have"
+            name="skill-you-have"
+            class="w-full mt-2 p-2 border rounded-md"
+            required
+          />
+        </div>
+        <div>
+          <label for="skill-you-want" class="block text-lg font-medium"
+            >Skill You Want:</label
+          >
+          <input
+            type="text"
+            id="skill-you-want"
+            name="skill-you-want"
+            class="w-full mt-2 p-2 border rounded-md"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+        >
+          Search
+        </button>
+      </form>
+    </section>
+
+    <section
+      id="contact"
+      class="max-w-3xl mx-auto my-10 p-6 bg-white shadow-md rounded-lg text-center"
+    >
+      <h2 class="text-2xl font-semibold mb-4">Contact Us</h2>
+      <p>
+        Have questions? Reach out at
+        <a
+          href="mailto:contact@skillissue.com"
+          class="text-blue-600 hover:underline"
+          >contact@skillissue.com</a
+        >
+      </p>
+    </section>
+
+    <footer class="bg-gray-800 text-white text-center py-4 mt-10">
+      <p>&copy; 2025 SkillIssue. All rights reserved.</p>
+    </footer>
+  </body>
+</html>
