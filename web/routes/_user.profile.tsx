@@ -18,10 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAction, useActionForm, useFindMany } from "@gadgetinc/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "../api";
 import { toast } from "sonner";
 import { useOutletContext } from "react-router";
-import { api } from "../api";
 import type { AuthOutletContext } from "./_user";
 
 export default function () {
@@ -83,9 +83,9 @@ export default function () {
       !userSkills?.some((userSkill) => userSkill.skill.id === skill.id)
   );
 
-  const handleAddSkill = () => {
+  const handleAddSkill = async () => {
     if (selectedSkill) {
-      createUserSkill({
+      await createUserSkill({
         proficiencyLevel,
         skill: {
           _link: selectedSkill,
@@ -95,6 +95,8 @@ export default function () {
         },
       });
       setSelectedSkill("");
+      setProficiencyLevel("Beginner");
+      toast.success("Skill added successfully!");
     }
   };
 
@@ -265,39 +267,81 @@ export default function () {
 
 const EditProfileModal = (props: { open: boolean; onClose: () => void }) => {
   const { user } = useOutletContext<AuthOutletContext>();
-  const {
-    register,
-    submit,
-    formState: { isSubmitting },
-  } = useActionForm(api.user.update, {
-    defaultValues: user,
-    onSuccess: props.onClose,
-    send: ["firstName", "lastName"],
-  });
+  const [{ fetching: isUpdating, error }, updateUser] = useAction(api.user.update);
+  const [firstName, setFirstName] = useState(user.firstName || "");
+  const [lastName, setLastName] = useState(user.lastName || "");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    try {
+      // Using the correct format: nesting firstName and lastName under a user property
+      await updateUser({
+        id: user.id,
+        user: {
+          firstName,
+          lastName
+        }
+      });
+      
+      toast.success("Profile updated successfully!");
+      props.onClose();
+    } catch (error) {
+      console.error("Update profile error:", error);
+      toast.error(`Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onClose}>
+    <Dialog open={props.open} onOpenChange={(open) => {
+      if (!open && !isSubmitting) props.onClose();
+    }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit profile</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit}>
+        {error && (
+          <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
+            Failed to update profile: {error.toString()}
+          </div>
+        )}
+        <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
               <Label>First Name</Label>
-              <Input placeholder="First name" {...register("firstName")} />
+              <Input 
+                placeholder="First name" 
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
             </div>
             <div>
               <Label>Last Name</Label>
-              <Input placeholder="Last name" {...register("lastName")} />
+              <Input 
+                placeholder="Last name" 
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}  
+              />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={props.onClose}>
+            <Button 
+              variant="outline" 
+              onClick={() => !isSubmitting && props.onClose()} 
+              type="button"
+              disabled={isUpdating || isSubmitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              Save
+            <Button 
+              type="submit" 
+              disabled={isUpdating || isSubmitting}
+            >
+              {isUpdating || isSubmitting ? "Saving..." : "Save"}
             </Button>
           </div>
         </form>
@@ -314,11 +358,33 @@ const AddSkillModal = (props: {
   const { user } = useOutletContext<AuthOutletContext>();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isOpen, setIsOpen] = useState(props.open);
+  const [submitting, setSubmitting] = useState(false);
   const [{ fetching: isCreatingSkill }, createSkill] = useAction(api.skill.create);
   const [{ fetching: isAddingSkill }, createUserSkill] = useAction(api.userSkill.create);
 
+  // Sync with parent's open state
+  useEffect(() => {
+    setIsOpen(props.open);
+  }, [props.open]);
+
+  // Reset form state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setName("");
+      setDescription("");
+      setSubmitting(false);
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    setIsOpen(false);
+    props.onClose();
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setSubmitting(true);
     
     try {
       // First create the skill
@@ -340,18 +406,22 @@ const AddSkillModal = (props: {
         });
 
         toast.success("Skill added successfully!");
-        setName("");
-        setDescription("");
-        props.onClose();
+        
+        // Pass the newly created skill ID to parent component to update the selection
+        props.onSkillAdded(result.skill.id);
+        
+        // Close the modal after skill is added successfully
+        handleClose();
       }
     } catch (error) {
       toast.error("Failed to add skill. Please try again.");
       console.error(error);
+      setSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onClose}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add New Skill</DialogTitle>
@@ -379,14 +449,14 @@ const AddSkillModal = (props: {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={props.onClose} type="button">
+            <Button variant="outline" onClick={handleClose} type="button">
               Cancel
             </Button>
             <Button 
               type="submit" 
-              disabled={!name.trim() || isCreatingSkill || isAddingSkill}
+              disabled={!name.trim() || isCreatingSkill || isAddingSkill || submitting}
             >
-              {isCreatingSkill || isAddingSkill ? "Adding..." : "Add Skill"}
+              {isCreatingSkill || isAddingSkill || submitting ? "Adding..." : "Add Skill"}
             </Button>
           </div>
         </form>

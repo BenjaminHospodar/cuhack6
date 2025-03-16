@@ -22,7 +22,7 @@ export default function ExplorePage() {
   const [userRequestMap, setUserRequestMap] = useState<Record<string, string>>({});
 
   // Fetch the user's sent requests to determine button states
-  const [{ data: sentRequests }, refetchSentRequests] = useFindMany(api.request, {
+  const [{ data: sentRequests, fetching: fetchingRequests }, refetchSentRequests] = useFindMany(api.request, {
     filter: {
       senderId: { equals: user?.id },
       status: { equals: "pending" }
@@ -31,19 +31,29 @@ export default function ExplorePage() {
       id: true,
       senderId: true,
       receiverId: true,
-      status: true
+      status: true,
+      createdAt: true
     }
   });
+
+  // Debug log for request data
+  useEffect(() => {
+    if (sentRequests) {
+      console.log(`[Requests] Loaded ${sentRequests.length} pending requests for user ${user?.id}`);
+    }
+  }, [sentRequests, user?.id]);
 
   // Create a map of receiverId -> requestId for easy lookup
   useEffect(() => {
     if (sentRequests) {
+      console.log('[Requests] Building request map from fetched data');
       const requestMap: Record<string, string> = {};
       sentRequests.forEach(request => {
         // All requests in this fetch should be pending based on filter,
         // but we double-check for safety
         if (request.status === "pending") {
           requestMap[request.receiverId] = request.id;
+          console.log(`[Requests] Added mapping: receiver ${request.receiverId} -> request ${request.id}`);
         }
       });
       setUserRequestMap(requestMap);
@@ -197,6 +207,14 @@ export default function ExplorePage() {
     }
   };
 
+  // Utility function to count users for a skill excluding the current user
+  const getOtherUsersCount = (skill: any) => {
+    if (!skill.users || !skill.users.edges) return 0;
+    
+    // Filter out the current user from the count
+    return skill.users.edges.filter(edge => edge.node.id !== user.id).length;
+  };
+
   // Filter skills based on search query
   const filteredSkills = skills?.filter(skill => {
     if (!searchQuery) return true;
@@ -204,7 +222,7 @@ export default function ExplorePage() {
     const query = searchQuery.toLowerCase();
     const matchesName = skill.name.toLowerCase().includes(query);
     const matchesDescription = skill.description && skill.description.toLowerCase().includes(query);
-    const matchesUserCount = String(skill.users.edges.length).includes(query);
+    const matchesUserCount = String(getOtherUsersCount(skill)).includes(query);
     
     return matchesName || matchesDescription || matchesUserCount;
   });
@@ -224,8 +242,8 @@ export default function ExplorePage() {
     if (!users || users.length === 0) return [];
     if (!selectedSkillId) return users;
 
-    return users.filter(user => {
-      return user.skills?.edges.some(edge => edge.node.id === selectedSkillId);
+    return users.filter(targetUser => {
+      return targetUser.skills?.edges.some(edge => edge.node.id === selectedSkillId);
     });
   }, [users, selectedSkillId]);
 
@@ -352,8 +370,8 @@ export default function ExplorePage() {
                         onClick={() => handleSkillFilterSelect(skill.id)}
                       >
                         {skill.name}
-                        {skill.users.edges.length > 0 && (
-                          <span className="ml-1 text-xs">({skill.users.edges.length})</span>
+                        {getOtherUsersCount(skill) > 0 && (
+                          <span className="ml-1 text-xs">({getOtherUsersCount(skill)})</span>
                         )}
                       </Badge>
                     ))
@@ -393,22 +411,22 @@ export default function ExplorePage() {
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredUsers.map(user => (
-                <Card key={user.id} className="overflow-hidden hover:shadow-md transition-shadow">
+              {filteredUsers.map(targetUser => (
+                <Card key={targetUser.id} className="overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg flex items-center">
                       <User className="h-4 w-4 mr-2 text-primary" />
-                      {user.firstName && user.lastName 
-                        ? `${user.firstName} ${user.lastName}`
-                        : user.email}
+                      {targetUser.firstName && targetUser.lastName 
+                        ? `${targetUser.firstName} ${targetUser.lastName}`
+                        : targetUser.email}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="mb-3">
+                  <CardContent className="flex-grow flex flex-col">
+                    <div className="flex-grow">
                       <h4 className="text-sm font-medium mb-1">Skills:</h4>
                       <div className="flex flex-wrap gap-1">
-                        {user.userSkills.edges.length > 0 ? (
-                          user.userSkills.edges.map(edge => (
+                        {targetUser.userSkills.edges.length > 0 ? (
+                          targetUser.userSkills.edges.map(edge => (
                             <Badge 
                               key={edge.node.id} 
                               variant="outline"
@@ -425,65 +443,94 @@ export default function ExplorePage() {
                         )}
                       </div>
                     </div>
-                    <div className="mt-4">
-                      {userRequestMap[user.id] ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full flex items-center gap-2 text-yellow-600 border-yellow-200 hover:bg-yellow-50"
-                          onClick={async () => {
-                            try {
-                              await deleteRequest({
-                                id: userRequestMap[user.id]
-                              });
-                              // Refetch to update UI
-                              await refetchSentRequests();
-                              toast.success("Request canceled", {
-                                description: "You've canceled your request to connect"
-                              });
-                            } catch (error) {
-                              toast.error("Failed to cancel request", {
-                                description: "There was a problem canceling your request"
-                              });
-                            }
-                          }}
-                          disabled={deletingRequest}
-                        >
-                          <Clock className="h-4 w-4" />
-                          Pending
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full flex items-center gap-2 text-primary hover:bg-primary/5"
-                          onClick={async () => {
-                            try {
-                              // Correctly set current user as sender and card user as receiver
-                              await createRequest({
-                                sender: { _link: user.id },
-                                receiver: { _link: user.id }, // This user is the displayed user
-                                status: "pending"
-                              });
-                              // Refetch to update UI
-                              await refetchSentRequests();
-                              toast.success("Request sent", {
-                                description: "You've sent a request to connect"
-                              });
-                            } catch (error) {
-                              toast.error("Failed to send request", {
-                                description: "There was a problem sending your request"
-                              });
-                            }
-                          }}
-                          disabled={creatingRequest}
-                        >
-                          <UserPlus className="h-4 w-4" />
-                          Request
-                        </Button>
-                      )}
-                    </div>
                   </CardContent>
+                  <CardFooter className="pt-0">
+                    {userRequestMap[targetUser.id] ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full flex items-center gap-2 text-yellow-600 border-yellow-200 hover:bg-yellow-50"
+                        onClick={async () => {
+                          try {
+                            const requestId = userRequestMap[targetUser.id];
+                            console.log(`[Request] Canceling request ${requestId} to user ${targetUser.id}`);
+                            
+                            await deleteRequest({
+                              id: requestId
+                            });
+                            
+                            // Optimistically update the local state
+                            setUserRequestMap(prev => {
+                              const newMap = { ...prev };
+                              delete newMap[targetUser.id];
+                              return newMap;
+                            });
+                            
+                            // Refetch to ensure UI is in sync with server
+                            console.log(`[Request] Refetching requests after cancellation`);
+                            await refetchSentRequests();
+                            
+                            toast.success("Request canceled", {
+                              description: "You've canceled your request to connect"
+                            });
+                          } catch (error) {
+                            console.error("[Request] Error canceling request:", error);
+                            toast.error("Failed to cancel request", {
+                              description: "There was a problem canceling your request"
+                            });
+                          }
+                        }}
+                        disabled={deletingRequest}
+                      >
+                        <Clock className="h-4 w-4" />
+                        Pending
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full flex items-center gap-2 text-primary hover:bg-primary/5"
+                        onClick={async () => {
+                          try {
+                            // The current logged-in user is from context, and the card's user is the target
+                            console.log(`[Request] Sending request from logged-in user ${user.id} to target user ${targetUser.id}`);
+                            console.log('[Request] Debug - Context user ID:', user.id, 'Target card user ID:', targetUser.id);
+                            
+                            // Create request with current user (from context) as sender and card user as receiver
+                            const result = await createRequest({
+                              sender: { _link: user.id }, // Logged-in user from context (current user)
+                              receiver: { _link: targetUser.id }, // The user being displayed in the card (target user)
+                              status: "pending"
+                            });
+                            
+                            console.log(`[Request] Request created with ID: ${result?.id}`, result);
+                            
+                            // Optimistically update local state before refetching
+                            setUserRequestMap(prev => ({
+                              ...prev,
+                              [targetUser.id]: result?.id
+                            }));
+                            
+                            // Refetch to ensure UI is in sync with server
+                            await refetchSentRequests();
+                            
+                            toast.success("Request sent", {
+                              description: "You've sent a request to connect"
+                            });
+                          } catch (error) {
+                            console.error("[Request] Error creating request:", error);
+                            toast.error("Failed to send request", {
+                              description: "There was a problem sending your request"
+                            });
+                          }
+                        }}
+                        disabled={creatingRequest}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        Request
+                      </Button>
+                    )}
+                  </CardFooter>
                 </Card>
               ))}
             </div>

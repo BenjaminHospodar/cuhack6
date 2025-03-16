@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { useSignOut } from "@gadgetinc/react";
-import { Home, LogOut, Menu, User, LayoutDashboard, Compass } from "lucide-react";
+import { Bell, Home, LogOut, Menu, User, LayoutDashboard, Compass, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import {
   Link,
@@ -96,7 +96,7 @@ const SideBar = () => {
         <Link to="/" className="flex items-center gap-2">
           <img
             //src="/api/assets/autologo?background=dark"
-            src="/web/public/skill.png"
+            src="/web/public/mingze.png"
             alt="App name"
             className="h-12 w-auto"
           />
@@ -125,6 +125,28 @@ const SideBar = () => {
         >
           <Compass className="mr-3 h-4 w-4" />
           Explore
+        </Link>
+        <Link
+          to="/messages"
+          className={`flex items-center px-4 py-2 text-sm rounded-md transition-colors
+      ${location.pathname === "/messages"
+              ? "bg-accent text-accent-foreground"
+              : "hover:bg-accent hover:text-accent-foreground"
+            }`}
+        >
+          <MessageCircle className="mr-3 h-4 w-4" />
+          Messages
+        </Link>
+        <Link
+          to="/requests"
+          className={`flex items-center px-4 py-2 text-sm rounded-md transition-colors
+      ${location.pathname === "/requests"
+              ? "bg-accent text-accent-foreground"
+              : "hover:bg-accent hover:text-accent-foreground"
+            }`}
+        >
+          <Bell className="mr-3 h-4 w-4" />
+          Requests
         </Link>
       </nav>
     </div>

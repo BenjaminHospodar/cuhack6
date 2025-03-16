@@ -26,7 +26,7 @@ export const schema: GadgetModel = {
       default: "pending",
       acceptMultipleSelections: false,
       acceptUnlistedOptions: false,
-      options: ["pending", "accepted", "rejected"],
+      options: ["pending", "accepted"],
       validations: { required: true },
       storageKey: "N_WgcqUjz_N_",
     },

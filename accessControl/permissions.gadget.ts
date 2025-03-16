@@ -27,6 +27,10 @@ export const permissions: GadgetPermissions = {
                 "accessControl/filters/request/signed-in-create.gelly",
             },
             delete: true,
+            respond: {
+              filter:
+                "accessControl/filters/request/signed-in-respond.gelly",
+            },
             update: true,
           },
         },

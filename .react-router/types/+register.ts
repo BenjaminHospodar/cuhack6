@@ -15,6 +15,8 @@ type Params = {
   "/sign-up": {};
   "/dashboard": {};
   "/signed-in": {};
+  "/messages": {};
+  "/requests": {};
   "/explore": {};
   "/profile": {};
 };
