@@ -407,7 +407,6 @@ const AddSkillModal = (props: {
         toast.success("Skill added successfully!");
         props.onSkillAdded(result.skill.id);
         props.onClose();
-        window.location.reload(); // Force refresh as instructed
       }
     } catch (error) {
       toast.error("Failed to add skill. Please try again.");
