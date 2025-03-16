@@ -93,13 +93,14 @@ const SideBar = () => {
   return (
     <div className="flex flex-col flex-grow bg-background border-r h-full">
       <div className="h-16 flex items-center px-6 border-b">
-        <Link to="/" className="flex items-center">
+        <Link to="/" className="flex items-center gap-2">
           <img
             //src="/api/assets/autologo?background=dark"
             src="/web/public/skill.png"
             alt="App name"
             className="h-12 w-auto"
           />
+          <span className="text-lg font-semibold">Skill Issues</span>
         </Link>
       </div>
       <nav className="flex-1 px-4 py-4 space-y-1">

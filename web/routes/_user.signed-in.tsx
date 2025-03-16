@@ -2,6 +2,7 @@ import { useUser } from "@gadgetinc/react";
 import { api } from "../api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link } from "react-router";
 
 export default function SignedInPage() {

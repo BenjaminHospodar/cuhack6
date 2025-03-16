@@ -1,0 +1,5 @@
+filter ($session: Session, $user: User) on Request [
+  where senderId == $user.id && 
+  receiverId == $user.id
+]
+# structured filters: [{"type":"tenancy_read_filter","field":"sender"},{"type":"tenancy_read_filter","field":"receiver"}]

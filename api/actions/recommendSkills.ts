@@ -6,7 +6,7 @@ export const params = {
 };
 
 export const run: ActionRun = async ({ params, logger, api, config, signal }) => {
-  // Define fallback recommendations to use if anything goes wrong
+  //define fallback recommendations to use if anything goes wrong
   const defaultRecommendations = [
     {
       name: "Project Management",

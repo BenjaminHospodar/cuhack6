@@ -7,6 +7,7 @@ import {
   ScrollRestoration,
 } from "react-router";
 import { Suspense } from "react";
+import { Toaster } from "@/components/ui/sonner";
 import { api } from "./api";
 import "./app.css";
 import type { GadgetConfig } from "gadget-server";
@@ -52,6 +53,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
             <Outlet context={{ gadgetConfig, csrfToken }} />
           </GadgetProvider>
         </Suspense>
+        <Toaster />
         <ScrollRestoration />
         <Scripts />
       </body>

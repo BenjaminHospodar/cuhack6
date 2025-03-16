@@ -1,24 +1,58 @@
-import { useState, useEffect, useRef } from "react";
-import { useFindMany, useGlobalAction } from "@gadgetinc/react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useFindMany, useGlobalAction, useAction } from "@gadgetinc/react";
 import { useOutletContext } from "react-router";
 import { api } from "../api";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Search, User, Mail, Sparkles } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, Sparkles, Plus, Users, User, X, UserPlus, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 import { AuthOutletContext } from "./_user";
 
 export default function ExplorePage() {
   const { user } = useOutletContext<AuthOutletContext>();
-  const [searchMethod, setSearchMethod] = useState("name");
-  const [nameQuery, setNameQuery] = useState("");
-  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [skillSearchQuery, setSkillSearchQuery] = useState('');
+  const [userRequestMap, setUserRequestMap] = useState<Record<string, string>>({});
+
+  // Fetch the user's sent requests to determine button states
+  const [{ data: sentRequests }, refetchSentRequests] = useFindMany(api.request, {
+    filter: {
+      senderId: { equals: user?.id },
+      status: { equals: "pending" }
+    },
+    select: {
+      id: true,
+      senderId: true,
+      receiverId: true,
+      status: true
+    }
+  });
+
+  // Create a map of receiverId -> requestId for easy lookup
+  useEffect(() => {
+    if (sentRequests) {
+      const requestMap: Record<string, string> = {};
+      sentRequests.forEach(request => {
+        // All requests in this fetch should be pending based on filter,
+        // but we double-check for safety
+        if (request.status === "pending") {
+          requestMap[request.receiverId] = request.id;
+        }
+      });
+      setUserRequestMap(requestMap);
+    }
+  }, [sentRequests]);
+
+  // Actions for creating and deleting requests
+  const [{ fetching: creatingRequest }, createRequest] = useAction(api.request.create);
+  const [{ fetching: deletingRequest }, deleteRequest] = useAction(api.request.delete);
 
   // Use the recommendSkills global action
   const [{ data: recommendData, fetching: loadingRecommendations, error: recommendError }, recommend] =
@@ -78,17 +112,33 @@ export default function ExplorePage() {
     }
   }, [recommendData]);
 
-  // Fetch all skills for the skill selector
-  const [{ data: skills, fetching: loadingSkills }] = useFindMany(api.skill, {
+  // Action to add skills to user profile
+  const [{ fetching: addingSkill }, addUserSkill] = useAction(api.userSkill.create);
+
+  // Fetch all skills with user counts
+  const [{ data: skills, fetching: loadingSkills, error: skillsError }] = useFindMany(api.skill, {
     select: {
       id: true,
       name: true,
+      description: true,
+      users: {
+        edges: {
+          node: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
     },
     sort: { name: "Ascending" }
   });
 
-  // Fetch all users with their skills and detailed userSkill info (including proficiency)
-  const [{ data: users, fetching: loadingUsers }] = useFindMany(api.user, {
+  // Fetch all users except the current user with their skills
+  const [{ data: users, fetching: loadingUsers, error: usersError }] = useFindMany(api.user, {
+    filter: {
+      id: { notEquals: user.id }
+    },
     select: {
       id: true,
       firstName: true,
@@ -99,6 +149,7 @@ export default function ExplorePage() {
           node: {
             id: true,
             name: true,
+            description: true
           }
         }
       },
@@ -109,7 +160,7 @@ export default function ExplorePage() {
             proficiencyLevel: true,
             skill: {
               id: true,
-              name: true,
+              name: true
             }
           }
         }
@@ -117,44 +168,87 @@ export default function ExplorePage() {
     }
   });
 
-  // Filter users based on search criteria
-  const filteredUsers = users?.filter(user => {
-    if (searchMethod === "name" && nameQuery) {
-      const query = nameQuery.toLowerCase();
-      const fullName = `${user.firstName || ""} ${user.lastName || ""}`.toLowerCase();
-      return fullName.includes(query) ||
-        (user.firstName?.toLowerCase() || "").includes(query) ||
-        (user.lastName?.toLowerCase() || "").includes(query);
-    } else if (searchMethod === "skill" && selectedSkillId) {
-      return user.userSkills?.edges.some(edge => edge.node.skill.id === selectedSkillId);
+  // Debug log when skills are loaded or errors occur
+  useEffect(() => {
+    if (skills) {
+      console.log('[Skills] Loaded skills:', skills.length);
     }
-    return searchMethod === "name" && !nameQuery || searchMethod === "skill" && !selectedSkillId;
+    if (skillsError) {
+      console.error('[Skills] Error loading skills:', skillsError);
+    }
+  }, [skills, skillsError]);
+
+  // Handler for adding a skill to user profile
+  const handleAddSkill = async (skillId: string, skillName: string) => {
+    try {
+      await addUserSkill({
+        skill: { _link: skillId },
+        user: { _link: user.id },
+        proficiencyLevel: "Beginner"
+      });
+      
+      toast.success(`Added ${skillName} to your profile`, {
+        description: "You can update your proficiency level in your profile"
+      });
+    } catch (error) {
+      toast.error("Failed to add skill", {
+        description: "This skill might already be in your profile or there was a server error"
+      });
+    }
+  };
+
+  // Filter skills based on search query
+  const filteredSkills = skills?.filter(skill => {
+    if (!searchQuery) return true;
+    
+    const query = searchQuery.toLowerCase();
+    const matchesName = skill.name.toLowerCase().includes(query);
+    const matchesDescription = skill.description && skill.description.toLowerCase().includes(query);
+    const matchesUserCount = String(skill.users.edges.length).includes(query);
+    
+    return matchesName || matchesDescription || matchesUserCount;
   });
 
-  // Get user initials for avatar
-  const getUserInitials = (user: any) => {
-    return (
-      (user.firstName?.slice(0, 1) || "") +
-      (user.lastName?.slice(0, 1) || "")
-    ).toUpperCase() || "U";
-  };
-
-  // Get badge color based on proficiency level
-  const getProficiencyBadgeColor = (level: string) => {
-    switch (level) {
-      case "Beginner": return "bg-blue-100 hover:bg-blue-100 text-blue-800";
-      case "Intermediate": return "bg-yellow-100 hover:bg-yellow-100 text-yellow-800";
-      case "Expert": return "bg-green-100 hover:bg-green-100 text-green-800";
-      default: return "";
+  // Handle skill selection for filtering users
+  const handleSkillFilterSelect = (skillId: string) => {
+    if (selectedSkillId === skillId) {
+      // If same skill is clicked again, clear the filter
+      setSelectedSkillId(null);
+    } else {
+      setSelectedSkillId(skillId);
     }
   };
+
+  // Filter users by selected skill
+  const filteredUsers = useMemo(() => {
+    if (!users || users.length === 0) return [];
+    if (!selectedSkillId) return users;
+
+    return users.filter(user => {
+      return user.skills?.edges.some(edge => edge.node.id === selectedSkillId);
+    });
+  }, [users, selectedSkillId]);
+
+  // Get the name of the selected skill for display
+  const selectedSkillName = useMemo(() => {
+    if (!selectedSkillId || !skills) return null;
+    const skill = skills.find(s => s.id === selectedSkillId);
+    return skill ? skill.name : null;
+  }, [selectedSkillId, skills]);
 
   return (
     <div className="container mx-auto py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">Explore Skills</h1>
+        <p className="text-muted-foreground">
+          Discover new skills to learn and add to your profile. Browse all available skills or get personalized recommendations.
+        </p>
+      </div>
+      
       {/* Recommended Skills Section */}
       <section className="mb-12">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Recommended Skills for You</h1>
+          <h2 className="text-2xl font-bold mb-2">Recommended Skills for You</h2>
           <p className="text-muted-foreground">
             Based on your current skills, here are some skills you might be interested in learning.
           </p>
@@ -211,116 +305,204 @@ export default function ExplorePage() {
       </section>
 
       <Separator className="my-8" />
-
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Explore Users</h1>
-        <p className="text-muted-foreground">
-          Search for users by name or by skills. Connect with others who share your interests or have skills you're looking to learn.
-        </p>
-      </div>
-
-      <Tabs value={searchMethod} onValueChange={setSearchMethod} className="mb-8">
-        <TabsList className="mb-6">
-          <TabsTrigger value="name">Search by Name</TabsTrigger>
-          <TabsTrigger value="skill">Search by Skill</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="name">
-          <div className="relative mb-6">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search users by name..."
-              className="pl-8"
-              value={nameQuery}
-              onChange={(e) => setNameQuery(e.target.value)}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="skill">
-          <div className="mb-6">
-            <Select value={selectedSkillId || ""} onValueChange={setSelectedSkillId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a skill" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">All Skills</SelectItem>
-                {skills?.map(skill => (
-                  <SelectItem key={skill.id} value={skill.id}>
-                    {skill.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {loadingUsers ? (
-        <div className="flex justify-center my-8">
-          <p>Loading users...</p>
+      
+      {/* Browse Users by Skill Section */}
+      <section>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-2">Browse Other Users by Skill</h2>
+          <p className="text-muted-foreground">
+            Discover other users with specific skills. Click on a skill to filter the users.
+          </p>
         </div>
-      ) : (
-        <>
-          <h2 className="text-xl font-semibold mb-4">
-            {filteredUsers?.length || 0} Users Found
-          </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredUsers?.map(user => (
-              <Card key={user.id} className="overflow-hidden">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarFallback>{getUserInitials(user)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <CardTitle className="text-lg">
-                        {user.firstName} {user.lastName}
-                      </CardTitle>
-                      <div className="flex items-center text-sm text-muted-foreground">
-                        <Mail className="h-3.5 w-3.5 mr-1" />
-                        {user.email}
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="mt-3">
-                    <p className="text-sm font-medium mb-2">Skills:</p>
-                    {user.userSkills?.edges.length ? (
-                      <div className="flex flex-wrap gap-2">
-                        {user.userSkills.edges.map(({ node }) => (
-                          <Badge
-                            key={node.id}
-                            variant="outline"
-                            className={`${getProficiencyBadgeColor(node.proficiencyLevel)}`}
-                          >
-                            {node.skill.name} - {node.proficiencyLevel}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No skills added yet</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+        {/* Skill filter */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-2">Filter by Skill</h3>
+          
+          {/* Searchable skill filter */}
+          <div className="relative mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search for skills..."
+                className="pl-9"
+                value={skillSearchQuery}
+                onChange={(e) => setSkillSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            {/* Display filtered skills below the search */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {loadingSkills ? (
+                <p className="text-sm text-muted-foreground">Loading skills...</p>
+              ) : skillsError ? (
+                <p className="text-sm text-red-500">Error loading skills</p>
+              ) : (
+                skills && skills.length > 0 ? (
+                  skills
+                    .filter(skill => {
+                      if (!skillSearchQuery) return true;
+                      return skill.name.toLowerCase().includes(skillSearchQuery.toLowerCase()) || 
+                             (skill.description && skill.description.toLowerCase().includes(skillSearchQuery.toLowerCase()));
+                    })
+                    .map(skill => (
+                      <Badge 
+                        key={skill.id}
+                        className={`cursor-pointer px-3 py-1 ${selectedSkillId === skill.id ? 'bg-primary' : 'bg-secondary'}`}
+                        onClick={() => handleSkillFilterSelect(skill.id)}
+                      >
+                        {skill.name}
+                        {skill.users.edges.length > 0 && (
+                          <span className="ml-1 text-xs">({skill.users.edges.length})</span>
+                        )}
+                      </Badge>
+                    ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No skills available</p>
+                )
+              )}
+            </div>
           </div>
-
-          {filteredUsers?.length === 0 && (
-            <div className="text-center my-12 py-8">
-              <User className="h-12 w-12 mx-auto text-muted-foreground opacity-20" />
-              <h3 className="mt-4 text-lg font-medium">No users found</h3>
-              <p className="text-muted-foreground">
-                Try adjusting your search criteria
+          
+          {selectedSkillId && (
+            <div className="flex items-center gap-2 mb-4">
+              <p className="text-sm">
+                Showing users with skill: <span className="font-medium">{selectedSkillName}</span>
               </p>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                className="h-6 px-2" 
+                onClick={() => setSelectedSkillId(null)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        {/* Display filtered users */}
+        {loadingUsers ? (
+          <div className="flex justify-center my-8">
+            <p>Loading users...</p>
+          </div>
+        ) : usersError ? (
+          <div className="mt-6 p-4 border border-red-200 bg-red-50 rounded-md text-red-600">
+            <p>There was an error fetching users. Please try again later.</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredUsers.map(user => (
+                <Card key={user.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg flex items-center">
+                      <User className="h-4 w-4 mr-2 text-primary" />
+                      {user.firstName && user.lastName 
+                        ? `${user.firstName} ${user.lastName}`
+                        : user.email}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="mb-3">
+                      <h4 className="text-sm font-medium mb-1">Skills:</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {user.userSkills.edges.length > 0 ? (
+                          user.userSkills.edges.map(edge => (
+                            <Badge 
+                              key={edge.node.id} 
+                              variant="outline"
+                              className={selectedSkillId === edge.node.skill.id ? "border-primary text-primary" : ""}
+                            >
+                              {edge.node.skill.name}
+                              <span className="ml-1 text-xs opacity-70">
+                                ({edge.node.proficiencyLevel})
+                              </span>
+                            </Badge>
+                          ))
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No skills listed</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      {userRequestMap[user.id] ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full flex items-center gap-2 text-yellow-600 border-yellow-200 hover:bg-yellow-50"
+                          onClick={async () => {
+                            try {
+                              await deleteRequest({
+                                id: userRequestMap[user.id]
+                              });
+                              // Refetch to update UI
+                              await refetchSentRequests();
+                              toast.success("Request canceled", {
+                                description: "You've canceled your request to connect"
+                              });
+                            } catch (error) {
+                              toast.error("Failed to cancel request", {
+                                description: "There was a problem canceling your request"
+                              });
+                            }
+                          }}
+                          disabled={deletingRequest}
+                        >
+                          <Clock className="h-4 w-4" />
+                          Pending
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full flex items-center gap-2 text-primary hover:bg-primary/5"
+                          onClick={async () => {
+                            try {
+                              // Correctly set current user as sender and card user as receiver
+                              await createRequest({
+                                sender: { _link: user.id },
+                                receiver: { _link: user.id }, // This user is the displayed user
+                                status: "pending"
+                              });
+                              // Refetch to update UI
+                              await refetchSentRequests();
+                              toast.success("Request sent", {
+                                description: "You've sent a request to connect"
+                              });
+                            } catch (error) {
+                              toast.error("Failed to send request", {
+                                description: "There was a problem sending your request"
+                              });
+                            }
+                          }}
+                          disabled={creatingRequest}
+                        >
+                          <UserPlus className="h-4 w-4" />
+                          Request
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {filteredUsers.length === 0 && (
+              <div className="text-center my-12 py-8">
+                <User className="h-12 w-12 mx-auto text-muted-foreground opacity-20" />
+                <h3 className="mt-4 text-lg font-medium">No users found</h3>
+                <p className="text-muted-foreground">
+                  {selectedSkillId 
+                    ? "No users have this skill yet" 
+                    : "Try selecting a skill to see users"
+                  }
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }

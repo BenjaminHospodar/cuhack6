@@ -16,6 +16,20 @@ export const permissions: GadgetPermissions = {
         action: true,
       },
       models: {
+        request: {
+          read: {
+            filter:
+              "accessControl/filters/request/signed-in-read.gelly",
+          },
+          actions: {
+            create: {
+              filter:
+                "accessControl/filters/request/signed-in-create.gelly",
+            },
+            delete: true,
+            update: true,
+          },
+        },
         skill: {
           read: true,
           actions: {
