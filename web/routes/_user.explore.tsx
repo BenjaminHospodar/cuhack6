@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useFindMany, useGlobalAction, useAction } from "@gadgetinc/react";
+import { Star, StarHalf } from "lucide-react";
 import { useOutletContext } from "react-router";
 import { api } from "../api";
 import { Input } from "@/components/ui/input";
@@ -36,24 +37,17 @@ export default function ExplorePage() {
     }
   });
 
-  // Debug log for request data
-  useEffect(() => {
-    if (sentRequests) {
-      console.log(`[Requests] Loaded ${sentRequests.length} requests (pending and accepted) for user ${user?.id}`);
-    }
-  }, [sentRequests, user?.id]);
+
 
   // Create a map of receiverId -> {id, status} for easy lookup
   useEffect(() => {
     if (sentRequests) {
-      console.log('[Requests] Building request map from fetched data');
       const requestMap: Record<string, {id: string, status: string}> = {};
       sentRequests.forEach(request => {
         requestMap[request.receiverId] = {
           id: request.id,
           status: request.status
         };
-        console.log(`[Requests] Added mapping: receiver ${request.receiverId} -> request ${request.id} (${request.status})`);
       });
       setUserRequestMap(requestMap);
     }
@@ -177,16 +171,84 @@ export default function ExplorePage() {
       }
     }
   });
+  
+  // Fetch user ratings with only essential fields
+  const [{ data: userRatings, fetching: loadingRatings }] = useFindMany(api.userRating, {
+    select: {
+      id: true,
+      rating: true,
+      ratedId: true
+    }
+  });
+  
+  // Calculate average ratings for each user - simplified and optimized
+  const userRatingMap = useMemo(() => {
+    if (!userRatings || !Array.isArray(userRatings)) {
+      return {};
+    }
+    
+    const ratingMap: Record<string, { total: number, count: number, average: number }> = {};
+    
+    userRatings.forEach(rating => {
+      if (!rating || !rating.ratedId || typeof rating.rating !== 'number') {
+        return;
+      }
+      
+      const userId = rating.ratedId;
+      const ratingValue = rating.rating;
+      
+      if (!ratingMap[userId]) {
+        ratingMap[userId] = { total: 0, count: 0, average: 0 };
+      }
+      
+      ratingMap[userId].total += ratingValue;
+      ratingMap[userId].count += 1;
+    });
+    
+    // Calculate averages with proper decimal handling
+    Object.keys(ratingMap).forEach(userId => {
+      const { total, count } = ratingMap[userId];
+      
+      if (count > 0) {
+        ratingMap[userId].average = Math.round((total / count) * 10) / 10; // Round to 1 decimal place
+      }
+    });
+    
+    return ratingMap;
+  }, [userRatings]);
+  
+  // Enhanced component to display star ratings with better zero-rating handling
+  const StarRating = ({ rating }: { rating: number }) => {
+    // Ensure rating is a valid number and clamp between 0-5
+    const safeRating = typeof rating === 'number' && !isNaN(rating) 
+      ? Math.min(Math.max(rating, 0), 5) 
+      : 0;
+    
+    // If no rating (0), show text instead of empty stars
+    if (safeRating === 0) {
+      return (
+        <span className="text-xs text-muted-foreground">No ratings yet</span>
+      );
+    }
+    
+    const fullStars = Math.floor(safeRating);
+    const hasHalfStar = safeRating % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+    
+    return (
+      <div className="flex items-center">
+        {fullStars > 0 && [...Array(fullStars)].map((_, i) => (
+          <Star key={`full-${i}`} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+        ))}
+        {hasHalfStar && <StarHalf className="h-4 w-4 fill-yellow-400 text-yellow-400" />}
+        {emptyStars > 0 && [...Array(emptyStars)].map((_, i) => (
+          <Star key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
+        ))}
+      </div>
+    );
+  };
 
-  // Debug log when skills are loaded or errors occur
-  useEffect(() => {
-    if (skills) {
-      console.log('[Skills] Loaded skills:', skills.length);
-    }
-    if (skillsError) {
-      console.error('[Skills] Error loading skills:', skillsError);
-    }
-  }, [skills, skillsError]);
+
 
   // Handler for adding a skill to user profile
   const handleAddSkill = async (skillId: string, skillName: string) => {
@@ -435,7 +497,31 @@ export default function ExplorePage() {
                   </CardHeader>
                   <CardContent className="flex-grow flex flex-col">
                     <div className="flex-grow">
-                      <h4 className="text-sm font-medium mb-1">Skills:</h4>
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="text-sm font-medium">Skills:</h4>
+                        <div className="flex flex-col items-end">
+                          {(() => {
+                            const userRating = userRatingMap[targetUser.id];
+                            return (
+                              <>
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <StarRating rating={userRating?.average || 0} />
+                                  {userRating?.count > 0 && (
+                                    <span className="text-sm font-medium text-yellow-600">
+                                      {userRating.average.toFixed(1)}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {userRating?.count > 0 ? 
+                                    `(${userRating.count} ${userRating.count === 1 ? 'rating' : 'ratings'})` : 
+                                    'No ratings yet'}
+                                </span>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
                       <div className="flex flex-wrap gap-1">
                         {targetUser.userSkills.edges.length > 0 ? (
                           targetUser.userSkills.edges.map(edge => (

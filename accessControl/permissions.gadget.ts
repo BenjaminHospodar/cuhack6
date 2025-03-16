@@ -70,6 +70,14 @@ export const permissions: GadgetPermissions = {
             },
           },
         },
+        userRating: {
+          read: true,
+          actions: {
+            create: true,
+            delete: true,
+            update: true,
+          },
+        },
         userSkill: {
           read: {
             filter:
