@@ -1,7 +1,7 @@
 import { applyParams, save, ActionOptions, assert } from "gadget-server";
 import { preventCrossUserDataAccess } from "gadget-server/auth";
 
-export const run: ActionRun = async ({ params, record, logger, api, session }) => {
+export const run: ActionRun = async ({ params, record, logger, api, session, sessionID }) => {
   logger.info({ requestId: record.id, params }, "Processing request response");
   
   // Ensure a valid status was provided
@@ -17,27 +17,67 @@ export const run: ActionRun = async ({ params, record, logger, api, session }) =
   assert(record.status === "pending", `Request must be in pending status to respond, current status: ${record.status}`);
   logger.debug("Request is in pending status");
 
-  // Ensure the current user is signed in
-  if (!session) {
-    logger.error("No session found when responding to request");
-    throw new Error("You must be signed in to respond to requests");
-  }
+  // Enhanced session validation with comprehensive debugging
+  let userId: string | undefined;
   
-  if (!session.userId) {
-    logger.error({ session }, "Session exists but has no userId");
-    throw new Error("You must be signed in to respond to requests");
+  // Debug log for session inspection
+  logger.debug({ 
+    sessionExists: !!session,
+    sessionID,
+    sessionUserId: session?.userId,
+    hasUser: !!session?.user
+  }, "Session state details");
+  
+  // Method 1: Get userId from session directly
+  if (session?.userId) {
+    userId = session.userId;
+    logger.debug({ method: "direct", userId }, "Found user ID directly from session");
+  } 
+  // Method 2: Get userId from session.user if available
+  else if (session?.user?.id) {
+    userId = session.user.id;
+    logger.debug({ method: "user object", userId }, "Found user ID from session.user object");
+  } 
+  // Method 3: Attempt to get the session via API if we have a sessionID
+  else if (sessionID) {
+    try {
+      logger.debug({ sessionID }, "Attempting to fetch session data using sessionID");
+      const sessionData = await api.session.findOne(sessionID, {
+        select: {
+          id: true,
+          user: { id: true }
+        }
+      });
+      
+      if (sessionData?.user?.id) {
+        userId = sessionData.user.id;
+        logger.debug({ method: "api fetch", userId }, "Found user ID by fetching session");
+      }
+    } catch (error) {
+      logger.error({ error, sessionID }, "Error fetching session data");
+    }
   }
 
-  logger.debug({ userId: session.userId }, "User is signed in");
+  // Final authentication check
+  if (!userId) {
+    logger.error({ 
+      sessionExists: !!session,
+      sessionID,
+      receiverId: record.receiverId
+    }, "Failed to determine user ID from any available method");
+    throw new Error("Authentication required: Unable to determine your user identity");
+  }
+
+  logger.debug({ userId, receiverId: record.receiverId }, "User is authenticated");
   
   // Validate that the current user is the receiver of this request using Gadget's tenancy system
   try {
     await preventCrossUserDataAccess(params, record, {
       userBelongsToField: "receiver"
     });
-    logger.debug("User has permission to respond to this request");
+    logger.debug({ userId, receiverId: record.receiverId }, "User has permission to respond to this request");
   } catch (error) {
-    logger.error({ error, userId: session.userId, receiverId: record.receiverId }, "User is not the receiver of this request");
+    logger.error({ error, userId, receiverId: record.receiverId }, "User is not the receiver of this request");
     throw new Error("You can only respond to requests that were sent to you");
   }
 
@@ -48,7 +88,7 @@ export const run: ActionRun = async ({ params, record, logger, api, session }) =
     requestId: record.id, 
     previousStatus,
     newStatus: record.status,
-    userId: session.userId,
+    userId,
     receiverId: record.receiverId,
     senderId: record.senderId
   }, "Updating request status");

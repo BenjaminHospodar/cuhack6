@@ -1,0 +1,3 @@
+filter($session: Session) [
+  where sender.id == $session.user.id
+]

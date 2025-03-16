@@ -19,13 +19,13 @@ export default function ExplorePage() {
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
-  const [userRequestMap, setUserRequestMap] = useState<Record<string, string>>({});
+  const [userRequestMap, setUserRequestMap] = useState<Record<string, {id: string, status: string}>>({});
 
-  // Fetch the user's sent requests to determine button states
+  // Fetch the user's sent requests to determine button states (both pending and accepted)
   const [{ data: sentRequests, fetching: fetchingRequests }, refetchSentRequests] = useFindMany(api.request, {
     filter: {
       senderId: { equals: user?.id },
-      status: { equals: "pending" }
+      status: { in: ["pending", "accepted"] }
     },
     select: {
       id: true,
@@ -39,22 +39,21 @@ export default function ExplorePage() {
   // Debug log for request data
   useEffect(() => {
     if (sentRequests) {
-      console.log(`[Requests] Loaded ${sentRequests.length} pending requests for user ${user?.id}`);
+      console.log(`[Requests] Loaded ${sentRequests.length} requests (pending and accepted) for user ${user?.id}`);
     }
   }, [sentRequests, user?.id]);
 
-  // Create a map of receiverId -> requestId for easy lookup
+  // Create a map of receiverId -> {id, status} for easy lookup
   useEffect(() => {
     if (sentRequests) {
       console.log('[Requests] Building request map from fetched data');
-      const requestMap: Record<string, string> = {};
+      const requestMap: Record<string, {id: string, status: string}> = {};
       sentRequests.forEach(request => {
-        // All requests in this fetch should be pending based on filter,
-        // but we double-check for safety
-        if (request.status === "pending") {
-          requestMap[request.receiverId] = request.id;
-          console.log(`[Requests] Added mapping: receiver ${request.receiverId} -> request ${request.id}`);
-        }
+        requestMap[request.receiverId] = {
+          id: request.id,
+          status: request.status
+        };
+        console.log(`[Requests] Added mapping: receiver ${request.receiverId} -> request ${request.id} (${request.status})`);
       });
       setUserRequestMap(requestMap);
     }
@@ -154,6 +153,7 @@ export default function ExplorePage() {
       firstName: true,
       lastName: true,
       email: true,
+      city: true,
       skills: {
         edges: {
           node: {
@@ -420,6 +420,18 @@ export default function ExplorePage() {
                         ? `${targetUser.firstName} ${targetUser.lastName}`
                         : targetUser.email}
                     </CardTitle>
+                    <div className="flex items-center mt-1">
+                      {console.log(`[User Card] User ${targetUser.id} city data:`, targetUser.city)}
+                      {targetUser.city ? (
+                        <p className="text-sm text-muted-foreground">
+                          📍 {targetUser.city}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic opacity-70">
+                          No location specified
+                        </p>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent className="flex-grow flex flex-col">
                     <div className="flex-grow">
@@ -446,45 +458,57 @@ export default function ExplorePage() {
                   </CardContent>
                   <CardFooter className="pt-0">
                     {userRequestMap[targetUser.id] ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full flex items-center gap-2 text-yellow-600 border-yellow-200 hover:bg-yellow-50"
-                        onClick={async () => {
-                          try {
-                            const requestId = userRequestMap[targetUser.id];
-                            console.log(`[Request] Canceling request ${requestId} to user ${targetUser.id}`);
+                      userRequestMap[targetUser.id].status === "accepted" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full flex items-center gap-2 text-green-600 border-green-200 hover:bg-green-50"
+                          disabled
+                        >
+                          <Check className="h-4 w-4" />
+                          Connected
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full flex items-center gap-2 text-yellow-600 border-yellow-200 hover:bg-yellow-50"
+                          onClick={async () => {
+                            try {
+                              const requestId = userRequestMap[targetUser.id].id;
+                              console.log(`[Request] Canceling request ${requestId} to user ${targetUser.id}`);
                             
-                            await deleteRequest({
-                              id: requestId
-                            });
+                              await deleteRequest({
+                                id: requestId
+                              });
                             
-                            // Optimistically update the local state
-                            setUserRequestMap(prev => {
-                              const newMap = { ...prev };
-                              delete newMap[targetUser.id];
-                              return newMap;
-                            });
+                              // Optimistically update the local state
+                              setUserRequestMap(prev => {
+                                const newMap = { ...prev };
+                                delete newMap[targetUser.id];
+                                return newMap;
+                              });
                             
-                            // Refetch to ensure UI is in sync with server
-                            console.log(`[Request] Refetching requests after cancellation`);
-                            await refetchSentRequests();
+                              // Refetch to ensure UI is in sync with server
+                              console.log(`[Request] Refetching requests after cancellation`);
+                              await refetchSentRequests();
                             
-                            toast.success("Request canceled", {
-                              description: "You've canceled your request to connect"
-                            });
-                          } catch (error) {
-                            console.error("[Request] Error canceling request:", error);
-                            toast.error("Failed to cancel request", {
-                              description: "There was a problem canceling your request"
-                            });
-                          }
-                        }}
-                        disabled={deletingRequest}
-                      >
-                        <Clock className="h-4 w-4" />
-                        Pending
-                      </Button>
+                              toast.success("Request canceled", {
+                                description: "You've canceled your request to connect"
+                              });
+                            } catch (error) {
+                              console.error("[Request] Error canceling request:", error);
+                              toast.error("Failed to cancel request", {
+                                description: "There was a problem canceling your request"
+                              });
+                            }
+                          }}
+                          disabled={deletingRequest}
+                        >
+                          <Clock className="h-4 w-4" />
+                          Pending
+                        </Button>
+                      )
                     ) : (
                       <Button
                         variant="outline"
@@ -508,7 +532,10 @@ export default function ExplorePage() {
                             // Optimistically update local state before refetching
                             setUserRequestMap(prev => ({
                               ...prev,
-                              [targetUser.id]: result?.id
+                              [targetUser.id]: {
+                                id: result?.id,
+                                status: "pending"
+                              }
                             }));
                             
                             // Refetch to ensure UI is in sync with server

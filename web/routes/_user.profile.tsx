@@ -113,6 +113,7 @@ export default function () {
             <div>
               <h2 className="text-lg font-semibold">{title}</h2>
               {hasName && <p className="text-gray-600">{user.email}</p>}
+              {user.city && <p className="text-gray-600">{user.city}</p>}
             </div>
           </div>
           <div className="flex gap-2">
@@ -270,6 +271,7 @@ const EditProfileModal = (props: { open: boolean; onClose: () => void }) => {
   const [{ fetching: isUpdating, error }, updateUser] = useAction(api.user.update);
   const [firstName, setFirstName] = useState(user.firstName || "");
   const [lastName, setLastName] = useState(user.lastName || "");
+  const [city, setCity] = useState(user.city || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -282,11 +284,13 @@ const EditProfileModal = (props: { open: boolean; onClose: () => void }) => {
         id: user.id,
         user: {
           firstName,
-          lastName
+          lastName,
+          city
         }
       });
-      
+    
       toast.success("Profile updated successfully!");
+      window.location.reload(); // Reload the page to refresh user data
       props.onClose();
     } catch (error) {
       console.error("Update profile error:", error);
@@ -327,6 +331,14 @@ const EditProfileModal = (props: { open: boolean; onClose: () => void }) => {
                 onChange={(e) => setLastName(e.target.value)}  
               />
             </div>
+            <div>
+              <Label>City</Label>
+              <Input 
+                placeholder="City" 
+                value={city}
+                onChange={(e) => setCity(e.target.value)}  
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
             <Button 
@@ -358,74 +370,64 @@ const AddSkillModal = (props: {
   const { user } = useOutletContext<AuthOutletContext>();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isOpen, setIsOpen] = useState(props.open);
-  const [submitting, setSubmitting] = useState(false);
-  const [{ fetching: isCreatingSkill }, createSkill] = useAction(api.skill.create);
+  const [{ fetching: isCreatingSkill, error: skillError }, createSkill] = useAction(api.skill.create);
   const [{ fetching: isAddingSkill }, createUserSkill] = useAction(api.userSkill.create);
+  
+  // One simple loading state
+  const isLoading = isCreatingSkill || isAddingSkill;
 
-  // Sync with parent's open state
+  // Reset form when opening
   useEffect(() => {
-    setIsOpen(props.open);
-  }, [props.open]);
-
-  // Reset form state when modal closes
-  useEffect(() => {
-    if (!isOpen) {
+    if (props.open) {
       setName("");
       setDescription("");
-      setSubmitting(false);
     }
-  }, [isOpen]);
-
-  const handleClose = () => {
-    setIsOpen(false);
-    props.onClose();
-  };
+  }, [props.open]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSubmitting(true);
+    
+    if (!name.trim()) return;
     
     try {
-      // First create the skill
+      // Create skill
       const result = await createSkill({
-        name,
-        description,
+        name: name.trim(),
+        description: description.trim(),
       });
 
       if (result?.skill?.id) {
-        // Then add it to the user
+        // Add to user
         await createUserSkill({
-          proficiencyLevel: "Beginner", // Default to beginner
-          skill: {
-            _link: result.skill.id,
-          },
-          user: {
-            _link: user.id,
-          },
+          proficiencyLevel: "Beginner",
+          skill: { _link: result.skill.id },
+          user: { _link: user.id },
         });
 
         toast.success("Skill added successfully!");
-        
-        // Pass the newly created skill ID to parent component to update the selection
         props.onSkillAdded(result.skill.id);
-        
-        // Close the modal after skill is added successfully
-        handleClose();
+        props.onClose();
+        window.location.reload(); // Force refresh as instructed
       }
     } catch (error) {
       toast.error("Failed to add skill. Please try again.");
       console.error(error);
-      setSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={props.open} onOpenChange={(open) => {
+      if (!open) props.onClose();
+    }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add New Skill</DialogTitle>
         </DialogHeader>
+        {skillError && (
+          <div className="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
+            Error: {skillError.message || "Unknown error"}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
@@ -449,14 +451,19 @@ const AddSkillModal = (props: {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={handleClose} type="button">
+            <Button 
+              variant="outline" 
+              onClick={props.onClose} 
+              type="button"
+              disabled={isLoading}
+            >
               Cancel
             </Button>
             <Button 
               type="submit" 
-              disabled={!name.trim() || isCreatingSkill || isAddingSkill || submitting}
+              disabled={!name.trim() || isLoading}
             >
-              {isCreatingSkill || isAddingSkill || submitting ? "Adding..." : "Add Skill"}
+              {isLoading ? "Adding..." : "Add Skill"}
             </Button>
           </div>
         </form>

@@ -16,6 +16,17 @@ export const permissions: GadgetPermissions = {
         action: true,
       },
       models: {
+        message: {
+          read: {
+            filter:
+              "accessControl/filters/message/signed-in-read.gelly",
+          },
+          actions: {
+            create: true,
+            delete: true,
+            update: true,
+          },
+        },
         request: {
           read: {
             filter:
@@ -81,7 +92,6 @@ export const permissions: GadgetPermissions = {
         },
       },
       actions: {
-        extractSkills: true,
         recommendSkills: true,
       },
     },

@@ -1,0 +1,4 @@
+filter ($session: Session, $user: User) on Message [
+  where receiverId == $user.id || senderId == $user.id
+]
+# structured filters: [{"type":"tenancy_read_filter","field":"receiver"}]

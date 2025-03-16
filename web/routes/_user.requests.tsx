@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { RefreshCcw } from "lucide-react";
+import { RefreshCcw, Check } from "lucide-react";
 
 export default function RequestsPage() {
   const { user } = useOutletContext<AuthOutletContext>();
@@ -55,12 +55,12 @@ export default function RequestsPage() {
     sort: { createdAt: "Descending" }
   });
 
-  // Fetch accepted requests (both incoming and outgoing)
+  // Fetch accepted requests (where current user is either the sender or receiver)
   const [{ data: acceptedRequests, fetching: fetchingAccepted, error: acceptedError }, refreshAccepted] = useFindMany(api.request, {
     filter: {
       OR: [
-        { receiverId: { equals: user.id } },
-        { senderId: { equals: user.id } }
+        { senderId: { equals: user.id } },
+        { receiverId: { equals: user.id } }
       ],
       status: { equals: "accepted" }
     },
@@ -148,7 +148,8 @@ export default function RequestsPage() {
   };
 
   // Render loading state
-  if ((fetchingIncoming || fetchingOutgoing || fetchingAccepted) && (!incomingRequests && !outgoingRequests && !acceptedRequests)) {
+  if ((fetchingIncoming || fetchingOutgoing || fetchingAccepted) && 
+      (!incomingRequests && !outgoingRequests && !acceptedRequests)) {
     return (
       <div className="container py-10">
         <h1 className="text-2xl font-bold mb-6">Loading requests...</h1>
@@ -180,7 +181,7 @@ export default function RequestsPage() {
         <div className="bg-red-100 text-red-800 p-4 rounded-md">
           {incomingError && <p>Error loading incoming requests: {incomingError.message}</p>}
           {outgoingError && <p>Error loading outgoing requests: {outgoingError.message}</p>}
-          {acceptedError && <p>Error loading accepted requests: {acceptedError.message}</p>}
+          {acceptedError && <p>Error loading accepted connections: {acceptedError.message}</p>}
         </div>
       </div>
     );
@@ -195,7 +196,7 @@ export default function RequestsPage() {
           size="sm" 
           className="flex items-center gap-2" 
           onClick={refreshAllData}
-          disabled={fetchingIncoming || fetchingOutgoing || fetchingAccepted}
+          disabled={fetchingIncoming || fetchingOutgoing}
         >
           <RefreshCcw className="h-4 w-4" />
           Refresh
@@ -218,7 +219,7 @@ export default function RequestsPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="accepted">
-            Accepted Requests
+            Accepted Connections
             {acceptedRequests && acceptedRequests.length > 0 && (
               <Badge className="ml-2" variant="secondary">{acceptedRequests.length}</Badge>
             )}
@@ -317,37 +318,48 @@ export default function RequestsPage() {
             <p className="text-gray-500">No outgoing requests found</p>
           )}
         </TabsContent>
-
+        
         <TabsContent value="accepted" className="space-y-4">
-          <h2 className="text-xl font-semibold mb-4">Accepted Requests</h2>
+          <h2 className="text-xl font-semibold mb-4">Accepted Connections</h2>
           {acceptedRequests && acceptedRequests.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2">
               {acceptedRequests.map((request) => {
-                const isSender = request.senderId === user.id;
-                const otherUser = isSender 
-                  ? (request.receiver ? `${request.receiver.firstName || ''} ${request.receiver.lastName || ''}`.trim() || "Unnamed User" : "Unknown User") 
-                  : `${request.sender.firstName || ''} ${request.sender.lastName || ''}`.trim() || "Unnamed User";
-                const otherUserEmail = isSender 
-                  ? (request.receiver?.email || "No email available") 
-                  : (request.sender.email || "No email available");
+                // Determine if current user is sender or receiver
+                const isCurrentUserSender = request.senderId === user.id;
+                const otherUser = isCurrentUserSender ? request.receiver : request.sender;
+                const otherUserInfo = otherUser ? {
+                  name: `${otherUser.firstName || ''} ${otherUser.lastName || ''}`.trim() || "Unnamed User",
+                  email: otherUser.email || "No email available",
+                  isMissing: false
+                } : {
+                  name: "Unknown User",
+                  email: "User data unavailable",
+                  isMissing: true
+                };
                 
                 return (
-                  <Card key={request.id}>
-                    <CardHeader>
-                      <CardTitle>
-                        {isSender ? `Your request to ${otherUser}` : `Request from ${otherUser}`}
+                  <Card key={request.id} className="border-green-200">
+                    <CardHeader className="bg-green-50 bg-opacity-50">
+                      <CardTitle className="flex items-center gap-2">
+                        <Check className="h-5 w-5 text-green-600" />
+                        Connected with {otherUserInfo.name}
                       </CardTitle>
                       <CardDescription>
                         <div className="flex justify-between items-center">
                           <span>{formatDate(request.createdAt)}</span>
-                          <StatusBadge status={request.status} />
+                          <Badge variant="outline" className="bg-green-100 text-green-800">Accepted</Badge>
                         </div>
                       </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <p>Email: {otherUserEmail}</p>
-                      <p className="mt-2 text-sm text-green-600">
-                        This connection was established on {formatDate(request.updatedAt)}
+                    <CardContent className="pt-4">
+                      <p>Email: {otherUserInfo.email}</p>
+                      {otherUserInfo.isMissing && (
+                        <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 rounded-md text-sm">
+                          This user's data is no longer available.
+                        </div>
+                      )}
+                      <p className="mt-2 text-sm text-gray-500">
+                        {isCurrentUserSender ? "You sent this request" : "This user sent you a request"}
                       </p>
                     </CardContent>
                   </Card>
@@ -355,7 +367,7 @@ export default function RequestsPage() {
               })}
             </div>
           ) : (
-            <p className="text-gray-500">No accepted requests found</p>
+            <p className="text-gray-500">No accepted connections found</p>
           )}
         </TabsContent>
       </Tabs>
