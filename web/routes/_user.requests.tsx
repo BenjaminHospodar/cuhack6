@@ -23,13 +23,37 @@ export default function RequestsPage() {
       id: true,
       firstName: true,
       lastName: true,
-      email: true
+      city: true,
+      userSkills: {
+        edges: {
+          node: {
+            id: true,
+            proficiencyLevel: true,
+            skill: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      }
     },
     receiver: {
       id: true,
       firstName: true,
       lastName: true,
-      email: true
+      city: true,
+      userSkills: {
+        edges: {
+          node: {
+            id: true,
+            proficiencyLevel: true,
+            skill: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      }
     },
     receiverId: true, // Include receiverId to check if it exists even when receiver is null
     senderId: true
@@ -147,6 +171,43 @@ export default function RequestsPage() {
     }
   };
 
+  // Helper function to render skill badges with proficiency level
+  const SkillBadges = ({ userSkills }: { userSkills: any }) => {
+    if (!userSkills?.edges || userSkills.edges.length === 0) {
+      return <p className="text-gray-500">No skills listed</p>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2 mt-2">
+        {userSkills.edges.map(({ node }: any) => {
+          const proficiencyColor = () => {
+            switch (node.proficiencyLevel) {
+              case "Beginner":
+                return "bg-blue-100 text-blue-800";
+              case "Intermediate":
+                return "bg-purple-100 text-purple-800";
+              case "Expert":
+                return "bg-green-100 text-green-800";
+              default:
+                return "bg-gray-100 text-gray-800";
+            }
+          };
+
+          return (
+            <Badge 
+              key={node.id} 
+              variant="outline" 
+              className={`${proficiencyColor()} px-3 py-1 flex items-center gap-1`}
+            >
+              <span>{node.skill.name}</span>
+              <span className="text-xs opacity-75">• {node.proficiencyLevel}</span>
+            </Badge>
+          );
+        })}
+      </div>
+    );
+  };
+
   // Render loading state
   if ((fetchingIncoming || fetchingOutgoing || fetchingAccepted) && 
       (!incomingRequests && !outgoingRequests && !acceptedRequests)) {
@@ -162,13 +223,15 @@ export default function RequestsPage() {
     if (!request.receiver) {
       return {
         name: "Unknown User",
-        email: "User data unavailable",
+        location: "Location unavailable",
+        skills: null,
         isMissing: true
       };
     }
     return {
       name: `${request.receiver.firstName || ''} ${request.receiver.lastName || ''}`.trim() || "Unnamed User",
-      email: request.receiver.email || "No email available",
+      location: request.receiver.city || "No location available",
+      skills: request.receiver.userSkills,
       isMissing: false
     };
   };
@@ -244,7 +307,11 @@ export default function RequestsPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p>Email: {request.sender.email}</p>
+                    <p>Location: {request.sender.city || "No location available"}</p>
+                    <div className="mt-3">
+                      <p className="mb-1 font-medium">Skills:</p>
+                      <SkillBadges userSkills={request.sender.userSkills} />
+                    </div>
                   </CardContent>
                   {request.status === "pending" && (
                     <CardFooter className="flex gap-2 justify-end">
@@ -292,7 +359,15 @@ export default function RequestsPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p>Email: {receiverInfo.email}</p>
+                      <p>Location: {receiverInfo.location}</p>
+                      <div className="mt-3">
+                        <p className="mb-1 font-medium">Skills:</p>
+                        {receiverInfo.skills ? (
+                          <SkillBadges userSkills={receiverInfo.skills} />
+                        ) : (
+                          <p className="text-gray-500">No skills available</p>
+                        )}
+                      </div>
                       {receiverInfo.isMissing && (
                         <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 rounded-md text-sm">
                           The user this request was sent to is no longer available.
@@ -352,7 +427,15 @@ export default function RequestsPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-4">
-                      <p>Email: {otherUserInfo.email}</p>
+                      <p>Location: {otherUser?.city || "No location available"}</p>
+                      <div className="mt-3">
+                        <p className="mb-1 font-medium">Skills:</p>
+                        {otherUser ? (
+                          <SkillBadges userSkills={otherUser.userSkills} />
+                        ) : (
+                          <p className="text-gray-500">No skills available</p>
+                        )}
+                      </div>
                       {otherUserInfo.isMissing && (
                         <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 rounded-md text-sm">
                           This user's data is no longer available.

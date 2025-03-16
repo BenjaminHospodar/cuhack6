@@ -96,7 +96,7 @@ const SideBar = () => {
         <Link to="/" className="flex items-center gap-2">
           <img
             //src="/api/assets/autologo?background=dark"
-            src="/web/public/mingze.png"
+            src="web/public/mingze.png"
             alt="App name"
             className="h-12 w-auto"
           />
